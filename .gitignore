@@ -47,3 +47,22 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# --- SEGURIDAD DE DATOS ---
+
+# 1. Ignorar la carpeta específica de datos
+data/
+datasets/
+
+# 2. Ignorar archivos de datos pesados (Por si se guardan fuera de la carpeta)
+*.csv
+*.xlsx
+*.xls
+*.json
+*.parquet
+*.RData
+*.rds
+
+# 3. Ignorar archivos temporales de sistema
+.DS_Store
+Thumbs.db
