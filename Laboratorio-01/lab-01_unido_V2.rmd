@@ -102,7 +102,7 @@ pelicula_mas_votada <- movies %>%
 pelicula_mas_votada %>% select(title, voteCount)
 ```
 
-**Análisis:** Podemos ver
+**Análisis:** 
 
 ---
 

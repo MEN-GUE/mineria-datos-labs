@@ -35,7 +35,7 @@ data <- read.csv("./data/movies_2026.csv")
 ```{r}
 summary(data)
 ```
-## Análisis: 
+## Análisis En la exploración podemos notar que 
 ---
 
 # 2. Tipo de cada variable
@@ -92,7 +92,7 @@ kable(types_tbl)
 > Por eso se evalúa sobre una muestra aleatoria y se apoya con gráficos.
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 
 
 # Separar variables numéricas y cualitativas

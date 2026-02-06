@@ -1,0 +1,603 @@
+---
+title: "lab-01"
+author: "Juan Menéndez - 17444"
+date: "2026-02-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+# Librerías
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(knitr)
+# Cargar dataset
+data <- read.csv("../data/movies_2026.csv")
+```
+
+## 1 Exploración rápida (resumen del dataset)
+
+```{r}
+summary(data)
+```
+
+El resumen muestra que hay muchas películas con presupuesto e ingresos en 0, lo cual sugiere datos faltantes o registros sin información financiera. También se observa que `video` es mayormente FALSE y que `homePage` tiene bastantes valores vacíos. Esto es importante porque, antes de modelar, conviene decidir cómo tratar ceros y valores faltantes.
+
+## 2 Tipo de cada variable
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+library(knitr)
+types_tbl <- tibble::tribble(
+~variable, ~tipo, ~descripcion,
+"id", "Cualitativa nominal", "Identificador; numérico pero no mide magnitud",
+"popularity", "Cuantitativa continua", "Índice (escala continua)",
+"budget", "Cuantitativa continua", "Presupuesto (moneda)",
+"revenue", "Cuantitativa continua", "Ingresos (moneda)",
+"originalTitle", "Cualitativa nominal", "Texto",
+"originalLanguage", "Cualitativa nominal", "Código de idioma",
+"title", "Cualitativa nominal", "Texto (título en inglés)",
+"homePage", "Cualitativa nominal", "URL (alta cardinalidad, muchos NA)",
+"video", "Cualitativa nominal", "Binaria (sí/no)",
+"director", "Cualitativa nominal", "Nombre (alta cardinalidad)",
+"runtime", "Cuantitativa continua", "Duración (minutos; medida de tiempo)",
+"genres", "Cualitativa nominal", "Multi-etiqueta (separada por coma o '|')",
+"genresAmount", "Cuantitativa discreta", "Conteo de géneros",
+"productionCompany", "Cualitativa nominal", "Texto / multi-etiqueta (según fuente)",
+"productionCoAmount", "Cuantitativa discreta", "Conteo de compañías productoras",
+"productionCompanyCountry", "Cualitativa nominal", "Multi-etiqueta (códigos de país)",
+"productionCountry", "Cualitativa nominal", "Multi-etiqueta (códigos de país)",
+"productionCountriesAmount", "Cuantitativa discreta", "Conteo de países",
+"releaseDate", "Cualitativa ordinal", "Fecha (tiene orden temporal)",
+"voteCount", "Cuantitativa discreta", "Conteo de votos",
+"voteAvg", "Cuantitativa continua", "Promedio (0–10)",
+"actors", "Cualitativa nominal", "Lista de actores (texto, separada por coma o '|')",
+"actorsPopularity", "Cuantitativa continua", "Popularidad del elenco (numérica o derivable)",
+"actorsCharacter", "Cualitativa nominal", "Lista de personajes (texto)",
+"actorsAmount", "Cuantitativa discreta", "Conteo de actores",
+"castWomenAmount", "Cuantitativa discreta", "Conteo de actrices",
+"castMenAmount", "Cuantitativa discreta", "Conteo de actores",
+"releaseYear", "Cuantitativa discreta", "Año"
+)
+kable(types_tbl)
+```
+
+Clasificar las variables ayuda a saber qué operaciones tienen sentido: por ejemplo, `id` se ve numérico pero es un identificador, mientras que `voteCount` es discreta y `voteAvg` es continua. También hay campos tipo texto que representan listas (como `genres` o `actors`), que requieren limpieza antes de usarlos. Esta tabla sirve como guía para escoger transformaciones y gráficos adecuados.
+
+## 3 Normalidad en variables cuantitativas y tabla de
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+# Separar variables numéricas y cualitativas
+num_cols <- names(data)[sapply(data, is.numeric)]
+cat_cols <- names(data)[sapply(data, function(x) is.character(x) || is.factor(x) || is.logical
+(x))]
+# Tomar muestra para pruebas (si el dataset es grande)
+set.seed(123)
+n_sample <- min(5000, nrow(data))
+data_s <- data[sample(seq_len(nrow(data)), n_sample), , drop = FALSE]
+# Prueba Shapiro-Wilk en variables numéricas (con manejo de NA)
+shapiro_res <- lapply(num_cols, function(col){
+x <- data_s[[col]]
+x <- x[is.finite(x)]
+# Shapiro requiere al menos 3 y máximo 5000 observaciones
+if(length(x) < 3) return(data.frame(variable=col, n=length(x), p_value=NA))
+if(length(x) > 5000) x <- sample(x, 5000)
+p <- tryCatch(shapiro.test(x)$p.value, error = function(e) NA)
+data.frame(variable=col, n=length(x), p_value=p)
+}) %>% bind_rows() %>% arrange(p_value)
+kable(shapiro_res, digits = 6, caption = "Prueba Shapiro-Wilk (muestra) para variables numéricas")
+# Histogramaspara algunas numéricas clave
+library(ggplot2)
+num_preview <- intersect(num_cols, c("popularity","budget","revenue","runtime","voteCount","voteAv
+g","actorsAmount","actorsPopularity"))
+num_preview <- if(length(num_preview) == 0) head(num_cols, 6) else num_preview
+for(col in num_preview){
+p <- ggplot(data, aes(x = .data[[col]])) +
+geom_histogram(bins = 40) +
+labs(title = paste("Histograma:", col), x = col, y = "Frecuencia")
+print(p)
+}
+```
+```{r}
+library(dplyr)
+bind_rows(lapply(cat_cols,function(c){
+x<-as.character(data[[c]]); x<-trimws(iconv(x,"","UTF-8","")); x[x==""]<-NA
+t<-sort(table(x,useNA="ifany"),decreasing=TRUE)
+data.frame(variable=c, top=names(t)[1], freq=as.integer(t[1]), unicos=sum(!is.na(t)), missing=sum(is.na(x)), stringsAsFactors=FALSE)
+})) %>% arrange(desc(freq))
+```
+
+La prueba de Shapiro-Wilk en una muestra da p-valores ~0 para las variables numéricas, así que no parecen normales. Los histogramas refuerzan que varias distribuciones están muy sesgadas (por ejemplo presupuesto e ingresos). En las cualitativas se ven muchos NA y alta cardinalidad (como `homePage` o `director`), lo cual afecta conteos y agrupaciones. En general, para análisis posteriores conviene usar transformaciones como log y métricas robustas (mediana) en vez de asumir normalidad.
+
+## 4.1 ¿Cuáles son las 10 películas que contaron con más
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+top10_budget <- data %>%
+arrange(desc(budget)) %>%
+select(title, budget, releaseYear, director) %>%
+slice_head(n = 10)
+top10_budget
+```
+
+Las películas con mayor presupuesto son principalmente franquicias y producciones muy grandes (por ejemplo Pirates y Avengers). Los valores llegan a cientos de millones, lo que las pone fuera del rango típico del resto del dataset. Esto sugiere una distribución muy sesgada y la presencia de outliers. En análisis posteriores, usar escala log ayuda a comparar mejor presupuestos.
+
+## 4.2 ¿Cuáles son las 10 películas que más ingresos
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+top10_revenue <- data %>%
+arrange(desc(revenue)) %>%
+select(title, revenue, budget, releaseYear, director) %>%
+slice_head(n = 10)
+top10_revenue
+```
+
+En ingresos, aparecen títulos muy conocidos como Avatar, Avengers: Endgame y Titanic, con ingresos de miles de millones. Aunque el presupuesto influye, no todas las películas con presupuesto alto necesariamente están en el top de revenue. Esto indica que hay otros factores (popularidad, marketing, franquicia, etc.) además del gasto. También refuerza que revenue tiene outliers extremos.
+
+## 4.3 ¿Cuál es la película que más votos tuvo?
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+pelicula_mas_votada <- data[which.max(data$voteCount), ]
+```
+
+La película con más votos es Inception con 30788 votos y una calificación de 8.4. Tener muchos votos sugiere que es una película muy vista o muy discutida, por lo que su promedio es más confiable. En general, `voteCount` puede usarse como un indicador de confianza para `voteAvg`. Para comparaciones justas, conviene filtrar por un mínimo de votos.
+
+## 4.4 ¿Cuál es la peor película de acuerdo a los votos de
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+# Peor por voteAvg (sin filtrar)
+worst_voteAvg <- data %>%
+filter(!is.na(voteAvg)) %>%
+arrange(voteAvg, desc(voteCount)) %>%
+select(title, voteAvg, voteCount) %>%
+slice_head(n = 1)
+# Peor con umbral de votos
+umbral_votos <- quantile(data$voteCount, 0.90, na.rm = TRUE) # mismo criterio usado después
+worst_voteAvg_confiable <- data %>%
+filter(!is.na(voteAvg), voteCount >= umbral_votos) %>%
+arrange(voteAvg, desc(voteCount)) %>%
+select(title, voteAvg, voteCount) %>%
+slice_head(n = 1)
+list(
+peor_sin_filtro = worst_voteAvg,
+peor_con_umbral = worst_voteAvg_confiable
+)
+```
+
+Sin filtrar, la peor calificación sale con un caso de 1 voto (The Halloween Harvest con 0), lo cual no es muy representativo. Al usar un umbral de votos, aparece Death Note con 4.2 y 3388 votos, que es un resultado más estable. Esto muestra por qué `voteAvg` debe analizarse junto con `voteCount`. En minería de datos, este tipo de filtro evita conclusiones por ruido.
+
+## 4.5 ¿Cuántas películas se hicieron en cada año? ¿En qué
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+library(ggplot2)
+movies_per_year <- data %>%
+filter(!is.na(releaseYear)) %>%
+count(releaseYear, name = "peliculas") %>%
+arrange(desc(peliculas))
+anio_max <- movies_per_year$releaseYear[1]
+max_count <- movies_per_year$peliculas[1]
+movies_per_year %>% head(10)
+ggplot(movies_per_year, aes(x = factor(releaseYear), y = peliculas)) +
+geom_col() +
+labs(
+title = paste0("Películas por año (máximo en ", anio_max, " con ", max_count, " películas)"),
+x = "Año",
+y = "Cantidad de películas"
+) +
+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+```
+
+El conteo por año muestra que 2025 es el año con más películas, con 7351 registros. Esto puede deberse a cómo se recolectó el dataset o a que incluye muchos lanzamientos recientes. Como hay una concentración fuerte en pocos años, las comparaciones históricas pueden quedar sesgadas. El gráfico ayuda a ver rápidamente esa concentración temporal.
+
+## 4.6 Género principal de las 20 películas más recientes,
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+# Normalizar releaseDate
+data$releaseDate <- as.Date(data$releaseDate)
+# Función para extraer "género principal" como la primera etiqueta
+get_main_genre <- function(x){
+if(is.na(x) || x == "") return(NA_character_)
+# separador puede ser ',' o '|'
+parts <- str_split(x, pattern = "\\s*[\\,\\|]\\s*", simplify = FALSE)[[1]]
+if(length(parts) == 0) return(NA_character_)
+str_trim(parts[1])
+}
+data$main_genre <- vapply(as.character(data$genres), get_main_genre, character(1))
+# 20 películas más recientes
+recent_movies <- data %>%
+arrange(desc(releaseDate)) %>%
+slice_head(n = 20) %>%
+select(title, releaseDate, main_genre)
+recent_movies
+# Género principal de las 20 más recientes (conteo)
+recent_genre_count <- recent_movies %>% count(main_genre, sort = TRUE)
+recent_genre_count
+# Género predominante en todo el dataset
+overall_genre_count <- data %>%
+count(main_genre, sort = TRUE)
+overall_genre_count %>% head(15)
+# Gráfico del Top 15 géneros principales en el dataset
+top15 <- overall_genre_count %>% slice_head(n = 15)
+ggplot(top15, aes(x = reorder(main_genre, n), y = n)) +
+geom_col() +
+coord_flip() +
+labs(title = "Top 15 géneros principales (dataset completo)", x = "Género principal", y = "Canti
+dad")
+# ¿A qué género principal pertenecen las películas más largas?
+longest_movies <- data %>%
+filter(!is.na(runtime), runtime > 0) %>%
+arrange(desc(runtime)) %>%
+slice_head(n = 20) %>%
+select(title, runtime, main_genre, releaseYear)
+# Resumen: género más frecuente entre las 20 más largas
+longest_genre_summary <- longest_movies %>% count(main_genre, sort = TRUE)
+```
+
+Al revisar las 20 películas más recientes, aparecen géneros como Drama y Documentary, y también varios casos sin género (`NA`). Esto sugiere que el campo `genres` no está completo para algunos lanzamientos recientes. Si se quiere analizar tendencias recientes por género, primero habría que limpiar o imputar esos `NA`. También se ve que la fecha de lanzamiento se usa como base para ordenar y comparar.
+
+## 4.7 ¿Las películas de qué género principal obtuvieron
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+library(ggplot2)
+data_profit <- data %>% filter(budget > 0, revenue > 0, !is.na(main_genre))
+data_profit <- data_profit %>% mutate(profit = revenue - budget)
+profit_by_genre <- data_profit %>%
+group_by(main_genre) %>%
+summarise(
+peliculas = n(),
+ganancia_total = sum(profit, na.rm = TRUE),
+ganancia_promedio = mean(profit, na.rm = TRUE)
+) %>%
+arrange(desc(ganancia_total))
+profit_by_genre %>% head(15)
+top10_profit <- profit_by_genre %>% slice_head(n = 10)
+ggplot(top10_profit, aes(x = reorder(main_genre, ganancia_total), y = ganancia_total)) +
+geom_col() +
+coord_flip() +
+labs(title = "Top 10 géneros por ganancia total (revenue - budget)", x = "Género principal", y =
+"Ganancia total")
+```
+
+Al agrupar por género principal, Action y Adventure tienen ganancias totales altas, y Animation muestra un promedio de ganancia muy alto. La diferencia entre ganancia total y promedio es importante: un género puede tener mucho total por cantidad de películas. Este resultado ayuda a identificar géneros que, en promedio, son más rentables. Para decisiones de negocio, conviene mirar ambos: volumen y retorno promedio.
+
+## 4.8 ¿La cantidad de actores influye en los ingresos? ¿Se
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+library(ggplot2)
+data_cast <- data %>% filter(actorsAmount > 0, revenue > 0)
+# Correlación (Spearman por asimetría típica de revenue)
+corr_actors_revenue <- cor(data_cast$actorsAmount, data_cast$revenue, method = "spearman", use =
+"complete.obs")
+ggplot(data_cast, aes(x = actorsAmount, y = revenue)) +
+geom_point(alpha = 0.3) +
+scale_y_log10() +
+labs(title = "Actores vs Revenue (escala log)", x = "Cantidad de actores", y = "Revenue (log1
+0)")
+# Tendencia temporal: actores promedio por año
+actors_by_year <- data %>%
+filter(!is.na(releaseYear), actorsAmount > 0) %>%
+group_by(releaseYear) %>%
+summarise(actores_prom = mean(actorsAmount, na.rm = TRUE), peliculas = n()) %>%
+arrange(releaseYear)
+actors_by_year %>% tail(10)
+ggplot(actors_by_year, aes(x = releaseYear, y = actores_prom)) +
+geom_line() +
+geom_point() +
+labs(title = "Promedio de actores por año", x = "Año", y = "Actores promedio")
+```
+
+La correlación entre cantidad de actores e ingresos es positiva (~0.447), pero no es perfecta. Esto sugiere que más elenco podría asociarse con mayor revenue, aunque también puede estar mezclado con presupuestos altos. La tabla por año muestra que el promedio de actores cambia bastante según el año, lo que puede introducir sesgos temporales. Sería útil controlar por presupuesto para aislar mejor el efecto del elenco.
+
+## 4.9 ¿La cantidad de hombres y mujeres en el reparto
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+library(ggplot2)
+data_gender <- data %>%
+filter((castWomenAmount + castMenAmount) > 0) %>%
+mutate(
+total_cast = castWomenAmount + castMenAmount,
+prop_mujeres = castWomenAmount / total_cast
+)
+corr_prop_pop <- cor(data_gender$prop_mujeres, data_gender$popularity, method = "spearman", use =
+"complete.obs")
+corr_prop_rev <- cor(data_gender$prop_mujeres, data_gender$revenue, method = "spearman", use = "complete.obs")
+list(corr_prop_mujeres_popularity = corr_prop_pop,
+corr_prop_mujeres_revenue = corr_prop_rev)
+# Popularidad vs proporción de mujeres
+ggplot(data_gender, aes(x = prop_mujeres, y = popularity)) +
+geom_point(alpha = 0.25) +
+labs(title = "Proporción de mujeres en el elenco vs Popularidad", x = "Proporción mujeres", y =
+"Popularidad")
+# Revenue vs proporción de mujeres (solo revenue > 0)
+ggplot(filter(data_gender, revenue > 0), aes(x = prop_mujeres, y = revenue)) +
+geom_point(alpha = 0.25) +
+scale_y_log10() +
+labs(title = "Proporción de mujeres en el elenco vs Revenue (log)", x = "Proporción mujeres", y
+= "Revenue (log10)")
+```
+
+La proporción de mujeres en el reparto tiene correlación muy baja con popularidad (~0.092) y casi nula con revenue (~-0.004). Con estos datos, no parece haber una relación fuerte directa entre balance de género y éxito comercial. Aun así, correlación no implica causalidad y puede haber variables de confusión como género de película o país. El resultado sugiere que, al menos linealmente, el impacto es pequeño.
+
+## 4.10 ¿Quiénes son los directores que hicieron las 20
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+umbral <- quantile(data$voteCount, 0.90, na.rm = TRUE) # 10% con más votos
+data_filtrada <- subset(data, voteCount >= umbral)
+top20_reales <- data_filtrada[order(-data_filtrada$voteAvg, -data_filtrada$voteCount), ][1:20,
+c("director", "title", "voteCount", "voteAvg")]
+top20_reales
+```
+
+La lista de directores asociados a las 20 películas mejor calificadas incluye nombres muy reconocidos como Frank Darabont, Coppola y Spielberg. Esto coincide con títulos clásicos con alta calificación promedio. También aparecen algunos casos menos conocidos, lo cual puede ser por nichos con buena recepción. Para un análisis más justo, sería bueno considerar también `voteCount` para evitar títulos con pocos votos.
+
+## 4.11 ¿Cómo se correlacionan los presupuestos con los
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+library(ggplot2)
+fin <- data %>% filter(budget > 0, revenue > 0)
+corr_budget_rev <- cor(fin$budget, fin$revenue, method = "spearman", use = "complete.obs")
+ggplot(fin, aes(x = budget)) +
+geom_histogram(bins = 50) +
+scale_x_log10() +
+labs(title = "Distribución de presupuesto (log10)", x = "Budget (log10)", y = "Frecuencia")
+ggplot(fin, aes(x = revenue)) +
+geom_histogram(bins = 50) +
+scale_x_log10() +
+labs(title = "Distribución de ingresos (log10)", x = "Revenue (log10)", y = "Frecuencia")
+ggplot(fin, aes(x = budget, y = revenue)) +
+geom_point(alpha = 0.25) +
+scale_x_log10() +
+scale_y_log10() +
+labs(title = "Budget vs Revenue (log-log)", x = "Budget (log10)", y = "Revenue (log10)")
+```
+
+La correlación presupuesto-ingresos es alta (~0.706), lo que indica que en general gastar más se asocia con ganar más. Sin embargo, la dispersión (especialmente en escala log) sugiere que hay mucha variabilidad. Esto significa que el presupuesto ayuda, pero no garantiza éxito. Por eso es común complementar con otras variables como popularidad o marketing.
+
+## 4.12 ¿Se asocian ciertos meses de lanzamiento con
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+library(ggplot2)
+data$releaseDate <- as.Date(data$releaseDate)
+data$releaseMonth <- as.integer(format(data$releaseDate, "%m"))
+month_rev <- data %>%
+filter(revenue > 0, !is.na(releaseMonth)) %>%
+mutate(month = factor(releaseMonth, levels = 1:12))
+ggplot(month_rev, aes(x = month, y = revenue)) +
+geom_boxplot() +
+scale_y_log10() +
+labs(title = "Revenue por mes de lanzamiento (log)", x = "Mes", y = "Revenue (log10)")
+# Comparación simple de medias por mes
+rev_by_month <- month_rev %>%
+group_by(releaseMonth) %>%
+summarise(
+peliculas = n(),
+revenue_prom = mean(revenue, na.rm = TRUE),
+revenue_mediana = median(revenue, na.rm = TRUE)
+) %>%
+arrange(desc(revenue_prom))
+rev_by_month
+```
+
+El boxplot por mes y la tabla de medias muestran que los meses 5 y 6 tienen ingresos promedio muy altos (por ejemplo junio ~165.8M). Esto sugiere una estacionalidad donde ciertos meses concentran estrenos más fuertes. Como revenue es muy sesgado, usar log y mediana ayuda a comparar mejor entre meses. Este patrón puede servir para planificar ventanas de lanzamiento.
+
+## 4.13 ¿En qué meses se han visto los lanzamientos con
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+data$releaseDate <- as.Date(data$releaseDate)
+data$Mes <- as.integer(format(data$releaseDate, "%m"))
+# Ingresos totales por mes
+ingresos_por_mes <- data %>%
+filter(!is.na(Mes)) %>%
+group_by(Mes) %>%
+summarise(revenue_total = sum(revenue, na.rm = TRUE),
+revenue_prom = mean(revenue, na.rm = TRUE),
+peliculas = n()) %>%
+arrange(desc(revenue_total))
+# Gráfico ingresos totales por mes
+library(ggplot2)
+ggplot(ingresos_por_mes, aes(x = factor(Mes), y = revenue_total)) +
+geom_col() +
+labs(title = "Ingresos totales por mes", x = "Mes", y = "Revenue total")
+# Promedio de películas lanzadas por mes (en el dataset)
+prom_peliculas_mes <- mean(ingresos_por_mes$peliculas, na.rm = TRUE)
+```
+
+Al sumar ingresos por mes, junio también aparece como el mejor en revenue total, seguido por meses como diciembre y julio. Se nota que algunos meses tienen muchísimas películas, pero no necesariamente el mejor promedio. Esto indica que conviene analizar tanto el total (impacto global) como el promedio (desempeño típico). Para negocio, estos meses podrían ser prioridades para estrenos grandes.
+
+## 4.14 ¿Cómo se correlacionan las calificaciones con el
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+library(ggplot2)
+rate_rev <- data %>% filter(voteAvg > 0, revenue > 0)
+corr_voteavg_rev <- cor(rate_rev$voteAvg, rate_rev$revenue, method = "spearman", use = "complete.obs")
+ggplot(rate_rev, aes(x = voteAvg, y = revenue)) +
+geom_point(alpha = 0.25) +
+scale_y_log10() +
+labs(title = "VoteAvg vs Revenue (log)", x = "Calificación promedio (voteAvg)", y = "Revenue (log10)")
+# Calificación por bins para ver tendencia general
+rate_bins <- rate_rev %>%
+mutate(bin = cut(voteAvg, breaks = c(0,4,6,7,8,10), include.lowest = TRUE)) %>%
+group_by(bin) %>%
+summarise(revenue_mediana = median(revenue, na.rm = TRUE),
+peliculas = n()) %>%
+arrange(bin)
+ggplot(rate_bins, aes(x = bin, y = revenue_mediana)) +
+geom_col() +
+scale_y_log10() +
+labs(title = "Mediana de revenue por rango de calificación", x = "Rango voteAvg", y = "Revenue m
+ediana (log10)")
+```
+
+La correlación entre calificación e ingresos es baja (~0.106), así que una mejor nota no implica automáticamente más taquilla. Al agrupar por rangos de `voteAvg`, la mediana de ingresos sube de (4,6] a (7,8], pero luego baja en (8,10]. Esto puede pasar porque hay pocas películas en el rango más alto y el comportamiento es más variable. En resumen, la calidad percibida ayuda algo, pero no es el factor principal.
+
+## 4.15 ¿Qué estrategias de marketing, como videos
+
+```{r}
+library(dplyr)
+hp <- intersect(c("homepage","homePage","home_page","HomePage","official_homepage","website","sit
+e","url"), names(data))
+data %>%
+mutate(
+has_homepage = if (length(hp)>0) ifelse(trimws(iconv(as.character(.data[[hp[1]]]),"", "UTF-8",""))!="","Con Web","Sin Web") else NA,
+has_video = if ("video"%in%names(.)) ifelse(tolower(as.character(video))%in%c("1","true","t","yes"),"Con Video","Sin Video") else NA
+) %>%
+filter(revenue>0,!is.na(has_homepage),!is.na(has_video)) %>%
+group_by(has_homepage,has_video) %>%
+summarise(revenue_prom=mean(revenue,na.rm=TRUE),popularity_prom=mean(popularity,na.rm=TRUE),peliculas=n(),.groups="drop") %>%
+arrange(desc(revenue_prom))
+```
+
+La tabla indica que tener página oficial (Con Web) está asociado con un revenue promedio mucho mayor, especialmente para el grupo Con Web / Sin Video (~150.8M). El grupo Con Web / Con Video tiene muy pocas películas (n=3), así que ese promedio no es confiable. En general, parece que la presencia de web se relaciona con mayor alcance y éxito, pero hay que cuidar el tamaño de muestra. Sería ideal comparar también por género o presupuesto para evitar confusión.
+
+## 4.16 ¿La popularidad del elenco está directamente
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+library(ggplot2)
+cast_pop <- data %>%
+mutate(actorsPopularity_num = suppressWarnings(as.numeric(actorsPopularity))) %>%
+filter(!is.na(actorsPopularity_num), revenue > 0)
+corr_castpop_rev <- cor(cast_pop$actorsPopularity_num, cast_pop$revenue, method = "spearman", use
+= "complete.obs")
+ggplot(cast_pop, aes(x = actorsPopularity_num, y = revenue)) +
+geom_point(alpha = 0.25) +
+scale_y_log10() +
+labs(title = "Popularidad del elenco vs Revenue (log)", x = "ActorsPopularity", y = "Revenue (lo
+g10)")
+```
+
+La correlación de Spearman entre popularidad del elenco e ingresos es moderada-alta (~0.624). En el scatter (con revenue en log) se ve una tendencia creciente: elencos más populares suelen asociarse a mayor taquilla. Aun así, hay dispersión, así que no todos los casos siguen la misma relación. Este resultado sugiere que `actorsPopularity` es una variable útil para predecir revenue.
+
+## 5.1 ¿Es posible agrupar las películas en categorías
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+library(cluster)
+library(factoextra)
+data_fin <- subset(data, budget > 0 & revenue > 0)
+datos_escalados <- scale(data_fin[, c("budget", "revenue")])
+set.seed(123)
+km_fin <- kmeans(datos_escalados, centers = 3, nstart = 25)
+fviz_cluster(km_fin, data = datos_escalados,
+geom = "point",
+ellipse.type = "convex",
+ggtheme = theme_minimal(),
+main = "Clustering: Presupuesto vs Ingresos")
+aggregate(data_fin[, c("budget", "revenue")], by=list(cluster=km_fin$cluster), mean)
+```
+
+El clustering separa películas en tres grupos con promedios claros: un grupo de alto presupuesto y alto ingreso, uno medio y uno bajo. Esto es útil para segmentación rápida y comparar estrategias entre categorías financieras. Como se estandarizan las variables, el algoritmo se enfoca en patrones relativos más que en magnitudes absolutas. Estos clusters pueden servir para análisis posterior de rentabilidad o riesgo.
+
+## 5.2 ¿Existen grupos de películas “de culto” (alta
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+library(factoextra)
+data_vote <- subset(data, voteCount > 50 & voteAvg > 0)
+datos_vote_esc <- scale(data_vote[, c("voteAvg", "popularity")])
+set.seed(123)
+km_vote <- kmeans(datos_vote_esc, centers = 3, nstart = 25)
+fviz_cluster(km_vote, data = datos_vote_esc,
+geom = "point",
+main = "Clustering: Calificación vs Popularidad")
+aggregate(data_vote[, c("voteAvg", "popularity")], by=list(cluster=km_vote$cluster), mean)
+```
+
+El clustering de calificación vs popularidad genera un grupo con popularidad extremadamente alta y buena calificación (perfil “viral”). También aparecen grupos con calificaciones similares pero popularidad mucho menor, que se parecen más a “de culto”. Esto muestra que popularidad y calidad no son lo mismo y pueden separarse. La segmentación ayuda a identificar targets distintos para marketing.
+
+## 5.3 ¿Cuáles son las películas más rentables en
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+data_roi <- subset(data, budget > 1000000 & revenue > 0)
+data_roi$ROI <- (data_roi$revenue - data_roi$budget) / data_roi$budget
+top_roi <- data_roi[order(-data_roi$ROI), c("title", "budget", "revenue", "ROI")][1:10, ]
+top_roi
+```
+
+El top de ROI muestra películas con presupuestos relativamente bajos y revenues muy altos, como Alice in Wonderland con ROI ~189.7. Esto resalta que el retorno relativo puede contar otra historia distinta al ingreso absoluto. Filtrar por presupuesto mínimo evita que presupuestos muy pequeños distorsionen el ROI. Estos casos son interesantes para estudiar qué características se repiten en éxitos de alta rentabilidad.
+
+## 5.4 ¿Las coproducciones (varios países) generan más
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+library(ggplot2)
+data$es_coproduccion <- ifelse(data$productionCountriesAmount > 1, "Si", "No")
+aggregate(revenue ~ es_coproduccion, data = subset(data, revenue > 0), FUN = mean)
+ggplot(subset(data, revenue > 0), aes(x = es_coproduccion, y = revenue)) +
+geom_boxplot() + scale_y_log10() +
+labs(title = "Ingresos: Producción nacional vs Coproducción", y = "Revenue (log)")
+```
+
+Al comparar coproducciones (más de un país) contra producciones de un solo país, se puede evaluar si hay ventaja en ingresos promedio. Este análisis es útil porque las coproducciones pueden ampliar mercado y distribución. El resultado depende mucho de cómo esté distribuido el dataset y de si hay outliers grandes. Por eso, además del promedio, vale la pena revisar mediana o escala log.
+
+## 5.5 ¿Existe una duración (runtime) “ideal” que
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+data$rango_duracion <- cut(data$runtime,
+breaks = c(0, 90, 120, 150, 300),
+labels = c("<90 min", "90-120 min", "120-150 min", ">150 min"))
+calif_duracion <- aggregate(voteAvg ~ rango_duracion, data = data, FUN = mean)
+barplot(calif_duracion$voteAvg, names.arg = calif_duracion$rango_duracion,
+main = "Calificación promedio según duración", ylim = c(0, 10))
+```
+
+Al agrupar por rangos de duración, las películas de 120–150 minutos tienen la calificación promedio más alta (~6.17). Las muy cortas (<90) tienen una calificación promedio mucho menor (~2.70), lo que sugiere menor aceptación. Esto no significa que la duración cause la calificación, pero sí marca un patrón interesante. Podría explorarse si el género o el año explican parte de esta diferencia.
+
+## 5.6 ¿Se pueden identificar grupos según presupuesto
+
+```{r}
+# Librerías (si se agregan otras, colóquelas aquí)
+library(dplyr)
+library(factoextra)
+data_calidad <- subset(data, budget > 0 & voteAvg > 0)
+datos_scale <- scale(data_calidad[, c("budget", "voteAvg")])
+set.seed(123)
+km_calidad <- kmeans(datos_scale, centers = 3, nstart = 25)
+fviz_cluster(km_calidad, data = datos_scale,
+geom = "point",
+ellipse.type = "convex",
+main = "Clustering: Presupuesto vs Calificación",
+xlab = "Presupuesto (Estandarizado)",
+ylab = "Calificación (Estandarizada)")
+aggregate(data_calidad[, c("budget", "voteAvg")], by=list(cluster=km_calidad$cluster), mean)
+```
+
+El clustering de presupuesto vs calificación separa tres perfiles, incluyendo uno de alto presupuesto con buena calificación promedio (~6.71) y otro de presupuesto menor con calificación aún más alta (~7.51). Esto sugiere que gastar mucho no garantiza la mejor crítica, aunque puede ayudar. La estandarización permite comparar patrones sin que el presupuesto domine por escala. Los promedios por cluster ayudan a interpretar qué tipo de películas caen en cada grupo.
