@@ -1,6 +1,6 @@
 ---
 title: "lab-01"
-author: "Juan Menéndez - 17444"
+author: "Juan Menéndez - 17444, Luis Mendoza - 19644, José Antón - 221041"
 date: "2026-02-06"
 output: html_document
 ---
