@@ -102,7 +102,7 @@ pelicula_mas_votada <- movies %>%
 pelicula_mas_votada %>% select(title, voteCount)
 ```
 
-**Análisis  EstPodemos ver cuál es la película con mayor `voteCount`, lo que indica la que ha recibido más votos. Esto suele correlacionar con mayor popularidad o exposición. Es importante filtrar `NA` para evitar errores. Esta película puede ser un caso de estudio interesante para analizar su presupuesto, ingresos y calificación promedio, ya que tiene una gran participación del público.
+**Análisis:** Podemos ver
 
 ---
 
