@@ -17,6 +17,8 @@ library(knitr)
 data <- read.csv("../data/movies_2026.csv")
 ```
 
+## Nota sobre el uso de IA: Para evitar malos entendidos y confunciones se aclara el método de uso de Inteligencia Artificial en el siguiente trabajo. Debido a qué el método de trabajo empleado fue de manera separadas, se utilizó la herramienta de Microsoft Copilot para unificar la estructura de las respuestas, más se le pidió explicitamente que no tocara, remplazara ni alterara el código ni el análisis escrito. Así cómo para la verificación de faltas órtograficas que pudieran presentarse a lo largo del informe. Individualmente se pudo utilizar a manera de consulta y para resolver dudas, así cómo la herramienta interna de autocompletado en Rstudio.
+
 ## 1 Exploración rápida (resumen del dataset)
 
 ```{r}
@@ -28,7 +30,7 @@ El resumen muestra que hay muchas películas con presupuesto e ingresos en 0, lo
 ## 2 Tipo de cada variable
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías
 library(dplyr)
 library(knitr)
 types_tbl <- tibble::tribble(
@@ -70,12 +72,11 @@ Clasificar las variables ayuda a saber qué operaciones tienen sentido: por ejem
 ## 3 Normalidad en variables cuantitativas y tabla de
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
-# Separar variables numéricas y cualitativas
+# Librerías 
+# variables numéricas y cualitativas
 num_cols <- names(data)[sapply(data, is.numeric)]
 cat_cols <- names(data)[sapply(data, function(x) is.character(x) || is.factor(x) || is.logical
 (x))]
-# Tomar muestra para pruebas (si el dataset es grande)
 set.seed(123)
 n_sample <- min(5000, nrow(data))
 data_s <- data[sample(seq_len(nrow(data)), n_sample), , drop = FALSE]
@@ -83,7 +84,7 @@ data_s <- data[sample(seq_len(nrow(data)), n_sample), , drop = FALSE]
 shapiro_res <- lapply(num_cols, function(col){
 x <- data_s[[col]]
 x <- x[is.finite(x)]
-# Shapiro requiere al menos 3 y máximo 5000 observaciones
+# Verificar Shapiro
 if(length(x) < 3) return(data.frame(variable=col, n=length(x), p_value=NA))
 if(length(x) > 5000) x <- sample(x, 5000)
 p <- tryCatch(shapiro.test(x)$p.value, error = function(e) NA)
@@ -116,7 +117,7 @@ La prueba de Shapiro-Wilk en una muestra da p-valores ~0 para las variables num�
 ## 4.1 ¿Cuáles son las 10 películas que contaron con más
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 library(dplyr)
 top10_budget <- data %>%
 arrange(desc(budget)) %>%
@@ -130,7 +131,7 @@ Las películas con mayor presupuesto son principalmente franquicias y produccion
 ## 4.2 ¿Cuáles son las 10 películas que más ingresos
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 library(dplyr)
 top10_revenue <- data %>%
 arrange(desc(revenue)) %>%
@@ -144,7 +145,7 @@ En ingresos, aparecen títulos muy conocidos como Avatar, Avengers: Endgame y Ti
 ## 4.3 ¿Cuál es la película que más votos tuvo?
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 pelicula_mas_votada <- data[which.max(data$voteCount), ]
 ```
 
@@ -153,7 +154,7 @@ La película con más votos es Inception con 30788 votos y una calificación de 
 ## 4.4 ¿Cuál es la peor película de acuerdo a los votos de
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 library(dplyr)
 # Peor por voteAvg (sin filtrar)
 worst_voteAvg <- data %>%
@@ -179,7 +180,7 @@ Sin filtrar, la peor calificación sale con un caso de 1 voto (The Halloween Har
 ## 4.5 ¿Cuántas películas se hicieron en cada año? ¿En qué
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 library(dplyr)
 library(ggplot2)
 movies_per_year <- data %>%
@@ -204,7 +205,7 @@ El conteo por año muestra que 2025 es el año con más películas, con 7351 reg
 ## 4.6 Género principal de las 20 películas más recientes,
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 library(dplyr)
 library(stringr)
 library(ggplot2)
@@ -254,7 +255,7 @@ Al revisar las 20 películas más recientes, aparecen géneros como Drama y Docu
 ## 4.7 ¿Las películas de qué género principal obtuvieron
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 library(dplyr)
 library(ggplot2)
 data_profit <- data %>% filter(budget > 0, revenue > 0, !is.na(main_genre))
@@ -281,7 +282,7 @@ Al agrupar por género principal, Action y Adventure tienen ganancias totales al
 ## 4.8 ¿La cantidad de actores influye en los ingresos? ¿Se
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 library(dplyr)
 library(ggplot2)
 data_cast <- data %>% filter(actorsAmount > 0, revenue > 0)
@@ -311,7 +312,7 @@ La correlación entre cantidad de actores e ingresos es positiva (~0.447), pero 
 ## 4.9 ¿La cantidad de hombres y mujeres en el reparto
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 library(dplyr)
 library(ggplot2)
 data_gender <- data %>%
@@ -343,7 +344,7 @@ La proporción de mujeres en el reparto tiene correlación muy baja con populari
 ## 4.10 ¿Quiénes son los directores que hicieron las 20
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 umbral <- quantile(data$voteCount, 0.90, na.rm = TRUE) # 10% con más votos
 data_filtrada <- subset(data, voteCount >= umbral)
 top20_reales <- data_filtrada[order(-data_filtrada$voteAvg, -data_filtrada$voteCount), ][1:20,
@@ -356,7 +357,7 @@ La lista de directores asociados a las 20 películas mejor calificadas incluye n
 ## 4.11 ¿Cómo se correlacionan los presupuestos con los
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 library(dplyr)
 library(ggplot2)
 fin <- data %>% filter(budget > 0, revenue > 0)
@@ -381,7 +382,7 @@ La correlación presupuesto-ingresos es alta (~0.706), lo que indica que en gene
 ## 4.12 ¿Se asocian ciertos meses de lanzamiento con
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 library(dplyr)
 library(ggplot2)
 data$releaseDate <- as.Date(data$releaseDate)
@@ -410,7 +411,7 @@ El boxplot por mes y la tabla de medias muestran que los meses 5 y 6 tienen ingr
 ## 4.13 ¿En qué meses se han visto los lanzamientos con
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 library(dplyr)
 data$releaseDate <- as.Date(data$releaseDate)
 data$Mes <- as.integer(format(data$releaseDate, "%m"))
@@ -436,7 +437,7 @@ Al sumar ingresos por mes, junio también aparece como el mejor en revenue total
 ## 4.14 ¿Cómo se correlacionan las calificaciones con el
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 library(dplyr)
 library(ggplot2)
 rate_rev <- data %>% filter(voteAvg > 0, revenue > 0)
@@ -483,7 +484,7 @@ La tabla indica que tener página oficial (Con Web) está asociado con un revenu
 ## 4.16 ¿La popularidad del elenco está directamente
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías
 library(dplyr)
 library(ggplot2)
 cast_pop <- data %>%
@@ -503,7 +504,7 @@ La correlación de Spearman entre popularidad del elenco e ingresos es moderada-
 ## 5.1 ¿Es posible agrupar las películas en categorías
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías
 library(dplyr)
 library(cluster)
 library(factoextra)
@@ -524,7 +525,7 @@ El clustering separa películas en tres grupos con promedios claros: un grupo de
 ## 5.2 ¿Existen grupos de películas “de culto” (alta
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías
 library(dplyr)
 library(factoextra)
 data_vote <- subset(data, voteCount > 50 & voteAvg > 0)
@@ -542,7 +543,7 @@ El clustering de calificación vs popularidad genera un grupo con popularidad ex
 ## 5.3 ¿Cuáles son las películas más rentables en
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 library(dplyr)
 data_roi <- subset(data, budget > 1000000 & revenue > 0)
 data_roi$ROI <- (data_roi$revenue - data_roi$budget) / data_roi$budget
@@ -555,7 +556,7 @@ El top de ROI muestra películas con presupuestos relativamente bajos y revenues
 ## 5.4 ¿Las coproducciones (varios países) generan más
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 library(dplyr)
 library(ggplot2)
 data$es_coproduccion <- ifelse(data$productionCountriesAmount > 1, "Si", "No")
@@ -570,7 +571,7 @@ Al comparar coproducciones (más de un país) contra producciones de un solo pa�
 ## 5.5 ¿Existe una duración (runtime) “ideal” que
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 data$rango_duracion <- cut(data$runtime,
 breaks = c(0, 90, 120, 150, 300),
 labels = c("<90 min", "90-120 min", "120-150 min", ">150 min"))
@@ -584,7 +585,7 @@ Al agrupar por rangos de duración, las películas de 120–150 minutos tienen l
 ## 5.6 ¿Se pueden identificar grupos según presupuesto
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
+# Librerías 
 library(dplyr)
 library(factoextra)
 data_calidad <- subset(data, budget > 0 & voteAvg > 0)
