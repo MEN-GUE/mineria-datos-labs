@@ -1,0 +1,178 @@
+
+---
+title: "Análisis Exploratorio de Datos - Películas"
+author: "Alejandro Anton"
+date: "Semestre I – 2026"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(psych)
+```
+
+## 1. Carga y exploración de datos
+
+```{r}
+movies <- read.csv("movies_2026.csv", stringsAsFactors = FALSE)
+dim(movies)
+str(movies)
+summary(movies)
+colSums(is.na(movies))
+```
+
+## 2. Tipo de variables
+
+Las variables del conjunto de datos incluyen variables cualitativas nominales (título, idioma, género), cuantitativas continuas (presupuesto, ingresos, duración, popularidad) y cuantitativas discretas (votos, cantidad de actores).
+
+## 3. Normalidad y frecuencias
+
+```{r}
+shapiro.test(movies$budget)
+shapiro.test(movies$revenue)
+shapiro.test(movies$vote_average)
+```
+
+```{r}
+table(movies$original_language)
+table(movies$genres)
+```
+
+## 4. Análisis específico
+
+### 4.1 Películas con mayor presupuesto
+
+```{r}
+movies %>% arrange(desc(budget)) %>% select(title, budget) %>% head(10)
+```
+
+### 4.2 Películas con mayores ingresos
+
+```{r}
+movies %>% arrange(desc(revenue)) %>% select(title, revenue) %>% head(10)
+```
+
+### 4.3 Película con más votos
+
+```{r}
+movies %>% arrange(desc(vote_count)) %>% select(title, vote_count) %>% head(1)
+```
+
+### 4.4 Peor película según votos
+
+```{r}
+movies %>% filter(vote_count > 50) %>% arrange(vote_average) %>% select(title, vote_average) %>% head(1)
+```
+
+### 4.5 Películas por año
+
+```{r}
+movies$year <- year(as.Date(movies$release_date))
+movies_per_year <- movies %>% count(year)
+movies_per_year
+
+ggplot(movies_per_year, aes(year, n)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Películas por año", x = "Año", y = "Cantidad")
+```
+
+### 4.6 Género principal
+
+```{r}
+movies$main_genre <- sapply(strsplit(movies$genres, ","), `[`, 1)
+
+movies %>% arrange(desc(release_date)) %>% select(title, main_genre) %>% head(20)
+
+ggplot(movies, aes(main_genre)) +
+  geom_bar() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### 4.7 Género con mayores ganancias
+
+```{r}
+movies %>% group_by(main_genre) %>%
+  summarise(avg_revenue = mean(revenue, na.rm = TRUE)) %>%
+  arrange(desc(avg_revenue))
+```
+
+### 4.8 Cantidad de actores e ingresos
+
+```{r}
+cor(movies$cast_count, movies$revenue, use = "complete.obs")
+
+ggplot(movies, aes(cast_count, revenue)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+
+### 4.9 Hombres y mujeres en el reparto
+
+```{r}
+cor(movies$male_cast, movies$revenue, use="complete.obs")
+cor(movies$female_cast, movies$revenue, use="complete.obs")
+```
+
+### 4.10 Directores mejor calificados
+
+```{r}
+movies %>% arrange(desc(vote_average)) %>%
+  select(title, director, vote_average) %>%
+  head(20)
+```
+
+### 4.11 Presupuesto vs ingresos
+
+```{r}
+cor(movies$budget, movies$revenue, use="complete.obs")
+
+ggplot(movies, aes(budget, revenue)) +
+  geom_point() +
+  geom_smooth(method="lm")
+```
+
+### 4.12 Meses con mejores ingresos
+
+```{r}
+movies$month <- month(as.Date(movies$release_date), label = TRUE)
+
+movies %>% group_by(month) %>%
+  summarise(avg_revenue = mean(revenue, na.rm = TRUE)) %>%
+  arrange(desc(avg_revenue))
+```
+
+### 4.13 Películas por mes
+
+```{r}
+movies %>% group_by(month) %>%
+  summarise(total = n(), avg_revenue = mean(revenue, na.rm = TRUE))
+```
+
+### 4.14 Calificación vs éxito comercial
+
+```{r}
+cor(movies$vote_average, movies$revenue, use="complete.obs")
+
+ggplot(movies, aes(vote_average, revenue)) +
+  geom_point() +
+  geom_smooth(method="lm")
+```
+
+### 4.15 Estrategias de marketing
+
+```{r}
+cor(movies$promo_videos, movies$revenue, use="complete.obs")
+cor(movies$has_website, movies$revenue, use="complete.obs")
+```
+
+### 4.16 Popularidad del elenco
+
+```{r}
+cor(movies$cast_popularity, movies$revenue, use="complete.obs")
+
+ggplot(movies, aes(cast_popularity, revenue)) +
+  geom_point() +
+  geom_smooth(method="lm")
+```
