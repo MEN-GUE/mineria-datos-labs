@@ -1,0 +1,187 @@
+---
+title: "Lab1_3"
+author: "Alejandro Anton"
+date: "2026-02-02"
+output: html_document
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(cluster)
+library(factoextra)
+library(NbClust)
+library(mclust)
+library(clustertend)
+```
+
+#pregunta 3
+```{r}
+movies <- read.csv('C:/Users/aleja/Downloads/movies_2026.csv')
+pelicula_mas_votada <- movies[which.max(movies$voteCount), ]
+pelicula_mas_votada[, c("title", "voteCount")]
+```
+
+# pregunta 6
+```{r}
+movies$releaseDate <- as.Date(movies$releaseDate)
+
+recent_movies <- movies[order(movies$releaseDate, decreasing = TRUE), ][1:20, ]
+
+recent_movies$main_genre <- sapply(strsplit(recent_movies$genres, ","), `[`, 1)
+
+recent_genre_count <- table(recent_movies$main_genre)
+
+barplot(
+  recent_genre_count,
+  las = 2,
+  col = "darkgreen",
+  main = "Género principal de las 20 películas más recientes",
+  ylab = "Cantidad de películas",
+  xlab = "Género"
+)
+```
+
+```{r}
+movies$main_genre <- sapply(strsplit(movies$genres, ","), `[`, 1)
+
+genre_count <- table(movies$main_genre)
+
+barplot(
+  genre_count,
+  las = 2,
+  col = "steelblue",
+  main = "Género principal predominante en el conjunto de datos",
+  ylab = "Cantidad de películas",
+  xlab = "Género"
+)
+```
+
+#Pregunta 6.1 
+```{r}
+#¿A qué género principal pertenecen las películas más largas?
+max_runtime <- max(movies$runtime, na.rm = TRUE)
+
+longest_movies <- movies[movies$runtime == max_runtime, ]
+
+longest_movies[, c("title", "runtime", "main_genre")]
+```
+
+#Pregunta 9
+```{r}
+cor_women_pop <- cor(movies$castWomenAmount, movies$popularity, use = "complete.obs")
+cor_men_pop   <- cor(movies$castMenAmount, movies$popularity, use = "complete.obs")
+
+cor_women_rev <- cor(movies$castWomenAmount, log(movies$revenue + 1), use = "complete.obs")
+cor_men_rev   <- cor(movies$castMenAmount, log(movies$revenue + 1), use = "complete.obs")
+
+model_popularity <- lm(
+  popularity ~ castWomenAmount + castMenAmount,
+  data = movies
+)
+
+model_revenue <- lm(
+  log(revenue + 1) ~ castWomenAmount + castMenAmount,
+  data = movies
+)
+
+cat("Correlación mujeres - popularidad:", cor_women_pop, "\n")
+cat("Correlación hombres - popularidad:", cor_men_pop, "\n\n")
+
+cat("Correlación mujeres - ingresos:", cor_women_rev, "\n")
+cat("Correlación hombres - ingresos:", cor_men_rev, "\n\n")
+
+cat("Modelo de popularidad:\n")
+print(summary(model_popularity))
+
+cat("\nModelo de ingresos:\n")
+print(summary(model_revenue))
+
+#no inluye tanto el genero en la popularidad de una pelicula
+#influye levemente en los ingresos aunque no llegan a ser significativamente altos
+```
+
+#Pregunta 12
+```{r}
+movies$releaseDate <- as.Date(movies$releaseDate)
+
+# Extraer mes de lanzamiento
+movies$releaseMonth <- format(movies$releaseDate, "%m")
+
+# Eliminar ingresos faltantes o cero
+movies_clean <- movies[movies$revenue > 0 & !is.na(movies$releaseMonth), ]
+
+# Ingreso promedio por mes
+avg_revenue_month <- aggregate(
+  revenue ~ releaseMonth,
+  data = movies_clean,
+  FUN = mean
+)
+
+# Convertir mes a factor con nombres
+avg_revenue_month$releaseMonth <- factor(
+  avg_revenue_month$releaseMonth,
+  levels = sprintf("%02d", 1:12),
+  labels = month.name
+)
+
+# Gráfica
+barplot(
+  avg_revenue_month$revenue,
+  names.arg = avg_revenue_month$releaseMonth,
+  las = 2,
+  col = "steelblue",
+  main = "Ingresos promedio según mes de lanzamiento",
+  ylab = "Ingreso promedio",
+  xlab = "Mes de lanzamiento"
+)
+
+#desde el punto de visto de la grafica se puede ver de mayo a junio son los meses mas altos
+#y los meses de novimbre, diciembre y julio le siguen en ganancias
+#por lo que si afecta el mes en el que se lanza una pelicula
+```
+
+#Pregunta 15
+```{r}
+movies$actorsPopularity <- as.numeric(as.character(movies$actorsPopularity))
+movies$revenue <- as.numeric(as.character(movies$revenue))
+
+# Limpiar datos
+movies_clean <- movies[
+  !is.na(movies$actorsPopularity) &
+  !is.na(movies$revenue) &
+  movies$revenue > 0,
+]
+
+# Correlación (usando log de ingresos)
+cor_elenco_revenue <- cor(
+  movies_clean$actorsPopularity,
+  log(movies_clean$revenue + 1),
+  use = "complete.obs"
+)
+
+# Modelo lineal
+model_cast_revenue <- lm(
+  log(revenue + 1) ~ actorsPopularity,
+  data = movies_clean
+)
+
+# Gráfica de dispersión
+plot(
+  movies_clean$actorsPopularity,
+  log(movies_clean$revenue + 1),
+  pch = 16,
+  col = rgb(0, 0, 1, 0.3),
+  main = "Popularidad del elenco vs éxito de taquilla",
+  xlab = "Popularidad del elenco",
+  ylab = "Log(Ingresos + 1)"
+)
+
+abline(model_cast_revenue, col = "red", lwd = 2)
+
+# Resultados
+cat("Correlación entre popularidad del elenco e ingresos:\n")
+cat(cor_elenco_revenue, "\n\n")
+
+cat("Modelo lineal:\n")
+print(summary(model_cast_revenue))
+```
