@@ -9,6 +9,17 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## R Markdown
+```{r}
+library(cluster)
+library(factoextra)
+library(NbClust)
+library(mclust)
+library("dplyr")
+library("tidyr")
+library("stringr")
+library("ggplot2")
+library("knitr")
+```
 
 ## Cargar data
 ```{r}
@@ -16,9 +27,58 @@ data <- read.csv("../data/movies_2026.csv")
 ```
 
 ## 1. Resumen de la  data
-```{r 1
+```{r 1}
 summary(data)
 ```
+
+# Ejercicio 2: Tipo de variable
+
+A continuación se clasifica cada variable según:
+- *Cualitativa nominal:* categorías sin orden.
+- *Cualitativa ordinal:* categorías con orden (p. ej., tiempo/fecha si se interpreta ordinalmente).
+- *Cuantitativa discreta:* conteos o enteros con “saltos” (p. ej., número de votos).
+- *Cuantitativa continua:* magnitudes en escala real (p. ej., presupuesto, revenue, popularidad).
+
+```{r tipos_variables}
+types_tbl <- tribble(
+  ~variable, ~tipo, ~descripcion,
+  "id", "Cualitativa nominal", "Identificador; numérico pero no mide magnitud",
+  "popularity", "Cuantitativa continua", "Índice (escala continua)",
+  "budget", "Cuantitativa continua", "Presupuesto (moneda)",
+  "revenue", "Cuantitativa continua", "Ingresos (moneda)",
+  "originaltitle", "Cualitativa nominal", "Texto",
+  "originallanguage", "Cualitativa nominal", "Código de idioma",
+  "title", "Cualitativa nominal", "Texto (título en inglés)",
+  "homepage", "Cualitativa nominal", "URL (alta cardinalidad, muchos NA)",
+  "video", "Cualitativa nominal", "Binaria (sí/no)",
+  "director", "Cualitativa nominal", "Nombre (alta cardinalidad)",
+  "runtime", "Cuantitativa continua", "Duración (minutos; medida de tiempo)",
+  "genres", "Cualitativa nominal", "Multi-etiqueta separada por '|'",
+  "genresamount", "Cuantitativa discreta", "Conteo de géneros",
+  "productioncompany", "Cualitativa nominal", "Texto / multi-etiqueta (según fuente)",
+  "productioncoamount", "Cuantitativa discreta", "Conteo de compañías productoras",
+  "productioncompanycountry", "Cualitativa nominal", "Multi-etiqueta (códigos de país)",
+  "productioncountry", "Cualitativa nominal", "Multi-etiqueta (códigos de país)",
+  "productioncountriesamount", "Cuantitativa discreta", "Conteo de países",
+  "releasedate", "Cualitativa ordinal", "Fecha (tiene orden temporal)",
+  "votecount", "Cuantitativa discreta", "Conteo de votos",
+  "voteavg", "Cuantitativa continua", "Promedio (0–10)",
+  "actors", "Cualitativa nominal", "Lista de actores separada por '|'",
+  "actorspopularity", "Cuantitativa continua", "Lista numérica por actor (derivable)",
+  "actorscharacter", "Cualitativa nominal", "Lista de personajes (texto)",
+  "actorsamount", "Cuantitativa discreta", "Conteo de actores",
+  "castwomenamount", "Cuantitativa discreta", "Conteo de actrices",
+  "castmenamount", "Cuantitativa discreta", "Conteo de actores",
+  "releaseyear", "Cuantitativa discreta", "Año"
+)
+```
+
+#pregunta 3
+```{r}
+pelicula_mas_votada <- data[which.max(data$voteCount), ]
+pelicula_mas_votada[, c("title", "voteCount")]
+```
+
 
 ## 4.1 Top 10 películas con mayor presupuesto
 ```{r 4.1}
@@ -57,6 +117,133 @@ ingresos_ordenados <- ingresos_por_mes[order(ingresos_por_mes$revenue, decreasin
 # Gráfico
 barplot(ingresos_ordenados$revenue, names.arg = ingresos_ordenados$Mes, main = "Ingresos Totales por Mes", col = "lightblue")
 ```
+
+## 4.16
+```{r 4.16}
+data$has_homepage <- ifelse(!is.na(data$homePage) & data$homePage != "", "Con Web", "Sin Web")
+data$has_video <- ifelse(!is.na(data$video) & data$video == TRUE, "Con Video", "Sin Video")
+
+data_clean <- subset(data, revenue > 0 & budget > 0)
+marketing_impact <- aggregate(revenue ~ has_homepage + has_video, data = data_clean, FUN = mean)
+
+marketing_impact$revenue_millones <- round(marketing_impact$revenue / 1000000, 2)
+marketing_impact <- marketing_impact[order(-marketing_impact$revenue), ]
+
+print(marketing_impact)
+```
+
+## Preguntas extras
+
+## Extra 1: ¿Es posible agrupar las películas en categorías financieras (ej. "Blockbusters", "Bajo Presupuesto/Alto Riesgo") basándose únicamente en su presupuesto (budget) e ingresos (revenue)?
+```{r extra1}
+# Filtrar peliculas con datos financieros validos
+data_fin <- subset(data, budget > 0 & revenue > 0)
+
+# Escalar los datos para que el presupuesto (millones) y revenue (millones) sean comparables
+datos_escalados <- scale(data_fin[, c("budget", "revenue")])
+
+# Aplicar K-Means con 3 centros (se sugiere probar el metodo del codo, aqui usamos 3 por simplicidad)
+set.seed(123)
+km_fin <- kmeans(datos_escalados, centers = 3, nstart = 25)
+
+# Visualizar los clusters
+fviz_cluster(km_fin, data = datos_escalados, 
+             geom = "point", 
+             ellipse.type = "convex", 
+             ggtheme = theme_minimal(),
+             main = "Clustering: Presupuesto vs Ingresos")
+
+# Ver las medias de cada grupo para interpretarlos
+aggregate(data_fin[, c("budget", "revenue")], by=list(cluster=km_fin$cluster), mean)
+
+```
+
+## Extra 2: ¿Existen grupos de películas que son "de culto" (alta calificación, baja popularidad) frente a películas "virales" (alta popularidad, calificación variable)?
+```{r extra2}
+# Filtrar para evitar sesgos de peliculas con 0 votos
+data_vote <- subset(data, voteCount > 50 & voteAvg > 0)
+datos_vote_esc <- scale(data_vote[, c("voteAvg", "popularity")])
+
+set.seed(123)
+km_vote <- kmeans(datos_vote_esc, centers = 3, nstart = 25)
+
+fviz_cluster(km_vote, data = datos_vote_esc, 
+             geom = "point", 
+             main = "Clustering: Calificación vs Popularidad")
+
+# Interpretar grupos
+aggregate(data_vote[, c("voteAvg", "popularity")], by=list(cluster=km_vote$cluster), mean)
+
+```
+
+## Extra 3: ¿Cuáles son las películas más rentables en términos relativos (ROI), no absolutos? El revenue absoluto engaña (una película puede ganar millones pero haber costado millones). El ROI ((Ingresos - Gastos) / Gastos) nos dice la eficiencia real.
+```{r extra3}
+# Calcular ROI solo para peliculas con presupuesto significativo (> 1M para evitar outliers extremos de micropresupuestos)
+data_roi <- subset(data, budget > 1000000 & revenue > 0)
+data_roi$ROI <- (data_roi$revenue - data_roi$budget) / data_roi$budget
+
+# Top 10 peliculas con mejor retorno de inversión
+top_roi <- data_roi[order(-data_roi$ROI), c("title", "budget", "revenue", "ROI")][1:10, ]
+top_roi
+```
+
+## Extra 4: ¿Las películas producidas en colaboración por varios países generan más ingresos promedio que las producidas por un solo país?
+```{r extra4}
+# Crear variable binaria: ¿Es coproducción?
+data$es_coproduccion <- ifelse(data$productionCountriesAmount > 1, "Si", "No")
+
+# Comparar medias de revenue (filtrando ceros)
+aggregate(revenue ~ es_coproduccion, data = subset(data, revenue > 0), FUN = mean)
+
+# Grafico
+ggplot(subset(data, revenue > 0), aes(x = es_coproduccion, y = revenue)) +
+  geom_boxplot() + scale_y_log10() +
+  labs(title = "Ingresos: Producción Nacional vs Coproducción", y = "Revenue (Log Scale)")
+```
+
+## Extra 5: ¿Existe una duración (runtime) "ideal" que maximice la calificación promedio (voteAvg)?
+```{r extra5}
+# Crear rangos de duración
+data$rango_duracion <- cut(data$runtime, 
+                           breaks = c(0, 90, 120, 150, 300), 
+                           labels = c("<90 min", "90-120 min", "120-150 min", ">150 min"))
+
+# Calcular calificación promedio por rango
+calif_duracion <- aggregate(voteAvg ~ rango_duracion, data = data, FUN = mean)
+calif_duracion
+
+# Graficar
+barplot(calif_duracion$voteAvg, names.arg = calif_duracion$rango_duracion, 
+        main = "Calificación Promedio según Duración", col = "lightgreen", ylim = c(0, 10))
+
+
+```
+## Extra 6: ¿Se pueden identificar grupos de películas según la relación entre su presupuesto y su calificación? (¿El dinero compra buenas críticas?)
+```{r}
+# 1. Filtrar datos limpios 
+data_calidad <- subset(data, budget > 0 & voteAvg > 0)
+
+# 2. Escalar los datos 
+datos_scale <- scale(data_calidad[, c("budget", "voteAvg")])
+
+# 3. Aplicar K-Means con 3 grupos
+set.seed(123)
+km_calidad <- kmeans(datos_scale, centers = 3, nstart = 25)
+
+# 4. Visualizar
+library(factoextra)
+fviz_cluster(km_calidad, data = datos_scale, 
+             geom = "point", 
+             ellipse.type = "convex",
+             main = "Clustering: Presupuesto vs Calificación",
+             xlab = "Presupuesto (Estandarizado)",
+             ylab = "Calificación Promedio (Estandarizada)")
+
+# 5. Ver las medias para ponerle nombre a los grupos
+aggregate(data_calidad[, c("budget", "voteAvg")], by=list(cluster=km_calidad$cluster), mean)
+```
+
+
 
 
 
