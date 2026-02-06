@@ -23,7 +23,7 @@ library(knitr)
 
 # Cargar dataset
 # Ajuste la ruta si su estructura de carpetas es distinta
-data <- read.csv("./data/movies_2026.csv")
+data <- read.csv("../data/movies_2026.csv")
 ```
 
 ---
@@ -134,24 +134,8 @@ for(col in num_preview){
 ```
 
 ```{r}
-# Tabla de frecuencias para cualitativas (top 15 categorías por variable)
-library(dplyr)
-library(stringr)
-library(knitr)
 
-freq_tables <- lapply(cat_cols, function(col){
-  x <- data[[col]]
-  x <- if(is.logical(x)) as.character(x) else x
-  tbl <- as.data.frame(table(x, useNA = "ifany"), stringsAsFactors = FALSE)
-  names(tbl) <- c("categoria", "frecuencia")
-  tbl <- tbl %>%
-    arrange(desc(frecuencia)) %>%
-    mutate(variable = col) %>%
-    slice_head(n = 15)
-  tbl
-}) %>% bind_rows()
 
-kable(freq_tables, caption = "Top 15 frecuencias por variable cualitativa (incluye NA)")
 ```
 
 ---
@@ -599,43 +583,19 @@ ggplot(rate_bins, aes(x = bin, y = revenue_mediana)) +
 ## 4.15 ¿Qué estrategias de marketing, como videos promocionales o páginas oficiales, generan mejores resultados?
 
 ```{r}
-# Librerías (si se agregan otras, colóquelas aquí)
 library(dplyr)
-library(ggplot2)
 
-data <- data %>%
+hp <- intersect(c("homepage","homePage","home_page","HomePage","official_homepage","website","site","url"), names(data))
+data %>%
   mutate(
-    has_homepage = ifelse(!is.na(homePage) & homePage != "", "Con Web", "Sin Web"),
-    has_video = ifelse(!is.na(video) & video == TRUE, "Con Video", "Sin Video")
-  )
-
-marketing <- data %>%
-  filter(revenue > 0) %>%
-  group_by(has_homepage, has_video) %>%
-  summarise(
-    peliculas = n(),
-    revenue_prom = mean(revenue, na.rm = TRUE),
-    popularity_prom = mean(popularity, na.rm = TRUE)
+    has_homepage = if (length(hp)>0) ifelse(trimws(iconv(as.character(.data[[hp[1]]]),"", "UTF-8",""))!="","Con Web","Sin Web") else NA,
+    has_video = if ("video"%in%names(.)) ifelse(tolower(as.character(video))%in%c("1","true","t","yes"),"Con Video","Sin Video") else NA
   ) %>%
+  filter(revenue>0,!is.na(has_homepage),!is.na(has_video)) %>%
+  group_by(has_homepage,has_video) %>%
+  summarise(revenue_prom=mean(revenue,na.rm=TRUE),popularity_prom=mean(popularity,na.rm=TRUE),peliculas=n(),.groups="drop") %>%
   arrange(desc(revenue_prom))
 
-marketing
-```
-
-```{r}
-# Boxplot por presencia de video
-ggplot(filter(data, revenue > 0), aes(x = has_video, y = revenue)) +
-  geom_boxplot() +
-  scale_y_log10() +
-  labs(title = "Revenue según presencia de video (log)", x = "Video", y = "Revenue (log10)")
-```
-
-```{r}
-# Boxplot por presencia de web oficial
-ggplot(filter(data, revenue > 0), aes(x = has_homepage, y = revenue)) +
-  geom_boxplot() +
-  scale_y_log10() +
-  labs(title = "Revenue según presencia de página oficial (log)", x = "Página oficial", y = "Revenue (log10)")
 ```
 
 ## 4.16 ¿La popularidad del elenco está directamente correlacionada con el éxito de taquilla?
@@ -645,14 +605,16 @@ ggplot(filter(data, revenue > 0), aes(x = has_homepage, y = revenue)) +
 library(dplyr)
 library(ggplot2)
 
-cast_pop <- data %>% filter(!is.na(actorsPopularity), revenue > 0)
+cast_pop <- data %>%
+  mutate(actorsPopularity_num = suppressWarnings(as.numeric(actorsPopularity))) %>%
+  filter(!is.na(actorsPopularity_num), revenue > 0)
 
-corr_castpop_rev <- cor(cast_pop$actorsPopularity, cast_pop$revenue, method = "spearman", use = "complete.obs")
+corr_castpop_rev <- cor(cast_pop$actorsPopularity_num, cast_pop$revenue, method = "spearman", use = "complete.obs")
 corr_castpop_rev
 ```
 
 ```{r}
-ggplot(cast_pop, aes(x = actorsPopularity, y = revenue)) +
+ggplot(cast_pop, aes(x = actorsPopularity_num, y = revenue)) +
   geom_point(alpha = 0.25) +
   scale_y_log10() +
   labs(title = "Popularidad del elenco vs Revenue (log)", x = "ActorsPopularity", y = "Revenue (log10)")

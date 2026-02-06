@@ -1,6 +1,8 @@
 ---
 title: "lab-01"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 date: "2026-02-02"
 ---
 
@@ -23,7 +25,7 @@ library("knitr")
 
 ## Cargar data
 ```{r}
-data <- read.csv("../data/movies_2026.csv")
+data <- read.csv("./data/movies_2026.csv")
 ```
 
 ## 1. Resumen de la  data
@@ -93,8 +95,11 @@ worst_voteCount
 ## 4.7 Género (genres) que obtuvo mejor ganancia (revenue)en orden de mayor a menorNOTE: No substraction only variable revenue
 ```{r 4.7}
 top_genres_revenue <- aggregate(revenue ~ genres, data = data, sum)
-top_genres_revenue <- top_genres_revenue[order(-top_genres_revenue $revenue), ]
-top_genres_revenue
+top_genres_revenue <- top_genres_revenue[order(-top_genres_revenue$revenue), ]
+
+knitr::kable(head(top_genres_revenue, 10), 
+             col.names = c("Género", "Ganancia Total"),
+             format.args = list(big.mark = ","))
 ```
 
 ## 4.10 Nombres de los directores (director) de las 20  peliculas con mejores (voteAvg)  y más votos (voteCount) y el nombre de dicha pelicula, mostrar el director, el titulo, la cantidad de votos y la media de votos
